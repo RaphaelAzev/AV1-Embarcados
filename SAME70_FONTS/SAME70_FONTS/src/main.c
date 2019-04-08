@@ -130,7 +130,7 @@ void io_init(void)
 
 	// Configura PIO para lidar com o pino do botão como entrada
 	// com pull-up
-	pio_configure(BUT_PIO, PIO_INPUT, BUT_IDX_MASK, PIO_PULLUP);
+	pio_configure(BUT_PIO, PIO_INPUT, BUT_IDX_MASK, PIO_PULLUP | PIO_DEBOUNCE);
 
 	// Configura interrupção no pino referente ao botao e associa
 	// função de callback caso uma interrupção for gerada
@@ -138,8 +138,8 @@ void io_init(void)
 	pio_handler_set(BUT_PIO,
 	BUT_PIO_ID,
 	BUT_IDX_MASK,
-	PIO_IT_RISE_EDGE,
-	but_callback());
+	PIO_IT_FALL_EDGE,
+	but_callback);
 
 	// Ativa interrupção
 	pio_enable_interrupt(BUT_PIO, BUT_IDX_MASK);
@@ -152,42 +152,67 @@ void io_init(void)
 
 
 int main(void) {
+	char buffer[32];
 	int N = 0;
 	int Naux = 0;
-	double velang = 0;
-	double vel = 0;
-	double dist = 0;
+	int velang = 0;
+	int vel = 0;
+	int dist = 0;
+	f_rtt_alarme = true;
 	board_init();
 	sysclk_init();	
 	configure_lcd();
 	
 	io_init();
 	
+	sprintf(buffer,"%02d",N);
+	font_draw_text(&calibri_36, "Pulsos", 25, 50, 1);
+	font_draw_text(&calibri_36, buffer, 245, 50, 1);
 	
+	sprintf(buffer,"%02d",velang);
+	font_draw_text(&calibri_36, "VEL_ang:", 25, 100, 1);
+	font_draw_text(&calibri_36, buffer, 245, 100, 1);
 	
-	font_draw_text(&sourcecodepro_28, "OIMUNDO", 50, 50, 1);
-	font_draw_text(&calibri_36, "Oi Mundo! #$!@", 50, 100, 1);
-	font_draw_text(&arial_72, "102456", 50, 200, 2);
+	sprintf(buffer,"%02d",vel);
+	font_draw_text(&calibri_36, "Vel[km/h]:", 25, 150, 1);
+	font_draw_text(&calibri_36, buffer, 245, 150, 1);
+	
+	sprintf(buffer,"%02d",dist);
+	font_draw_text(&calibri_36, "Dist[m]:", 25, 200, 1);
+	font_draw_text(&calibri_36, buffer, 245, 200, 1);
+		
+	buttonpress = 0;	
+	
 	while(1) {
 		if(buttonpress) {
 			N += 1;
-		if (f_rtt_alarme){
-			Naux = 0;
-			if (buttonpress) {
-				Naux += 1;
-			}
+			Naux += 1;
+			buttonpress = 0;
+			sprintf(buffer,"%02d",N);
+			font_draw_text(&calibri_36, buffer, 245, 50, 1);
+			
+		}
+		if (f_rtt_alarme) {
 			uint16_t pllPreScale = (int) (((float) 32768) / 2.0);
 			uint32_t irqRTTvalue  = 8;
       
 			// reinicia RTT para gerar um novo IRQ
 			RTT_init(pllPreScale, irqRTTvalue);
 		  
-			int dist = (N) * 2 * 3.14 * 0.325;
-			int           
-      
+			dist = (int) ((N) * 2 * 3.14 * 0.325);
+			velang = (int) (2 * 3.14 * Naux / 4);
+			vel = (int) (velang * 0.325 * 3.6);
+			     
+			sprintf(buffer,"%02d",velang);
+			font_draw_text(&calibri_36, buffer, 245, 100, 1);
+			sprintf(buffer,"%02d",vel);
+			font_draw_text(&calibri_36, buffer, 245, 150, 1);
+			sprintf(buffer,"%02d",dist);
+			font_draw_text(&calibri_36, buffer, 245, 200, 1);
+			
+			Naux = 0;
 			f_rtt_alarme = false;
 		}
-	  }
-			
 	}
+	  
 }
