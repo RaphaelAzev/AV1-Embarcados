@@ -11,20 +11,28 @@
 #include "calibri_36.h"
 #include "arial_72.h"
 
-#define BUT_PIO_ID			  ID_PIOD
-#define BUT_PIO				  PIOD
-#define BUT_IDX				  27
-#define BUT_IDX_MASK		  (1 << BUT_IDX)
+// butaum
+#define BUT_PIO           PIOD
+#define BUT_PIO_ID        ID_PIOD
+#define BUT_PIO_IDX       28
+#define BUT_IDX_MASK      (1u << BUT_PIO_IDX)
+
 
 // LED
 #define LED_PIO      PIOC
 #define LED_PIO_ID   ID_PIOC
-#define LED_IDX      8
-#define LED_IDX_MASK (1 << LED_IDX)
+#define LED_IDX      8u
+#define LED_IDX_MASK (1u << LED_IDX)
 
 
 
 struct ili9488_opt_t g_ili9488_display_opt;
+
+
+void pin_toggle(Pio *pio, uint32_t mask);
+void io_init(void);
+static void RTT_init(uint16_t pllPreScale, uint32_t IrqNPulses);
+//int *pulsos = 0;
 
 void configure_lcd(void){
 	/* Initialize display parameter */
@@ -39,15 +47,19 @@ void configure_lcd(void){
 	
 }
 
+volatile Bool f_rtt_alarme = false;
+volatile int buttonpress = 0;
+
+void pin_toggle(Pio *pio, uint32_t mask){
+	if(pio_get_output_data_status(pio, mask))
+	pio_clear(pio, mask);
+	else
+	pio_set(pio,mask);
+}
+
 void but_callback(void)
 {
-	for (int i=0;i<5;i++)
-	{
-		pio_clear(LED_PIO, LED_IDX_MASK);
-		delay_ms(200);
-		pio_set(LED_PIO, LED_IDX_MASK);
-		delay_ms(200);
-	}
+	buttonpress = 1;
 }
 
 void font_draw_text(tFont *font, const char *text, int x, int y, int spacing) {
@@ -63,6 +75,49 @@ void font_draw_text(tFont *font, const char *text, int x, int y, int spacing) {
 		p++;
 	}	
 }
+
+void RTT_Handler(void)
+{
+	uint32_t ul_status;
+
+	/* Get RTT status */
+	ul_status = rtt_get_status(RTT);
+
+	/* IRQ due to Time has changed */
+	if ((ul_status & RTT_SR_RTTINC) == RTT_SR_RTTINC) {  }
+
+	/* IRQ due to Alarm */
+	if ((ul_status & RTT_SR_ALMS) == RTT_SR_ALMS) {
+		pin_toggle(LED_PIO, LED_IDX_MASK);    // BLINK Led
+		f_rtt_alarme = true;                  // flag RTT alarme
+	}
+}
+
+static float get_time_rtt(){
+	uint ul_previous_time = rtt_read_timer_value(RTT);
+}
+
+static void RTT_init(uint16_t pllPreScale, uint32_t IrqNPulses)
+{
+	uint32_t ul_previous_time;
+
+	/* Configure RTT for a 1 second tick interrupt */
+	rtt_sel_source(RTT, false);
+	rtt_init(RTT, pllPreScale);
+	
+	ul_previous_time = rtt_read_timer_value(RTT);
+	while (ul_previous_time == rtt_read_timer_value(RTT));
+	
+	rtt_write_alarm_time(RTT, IrqNPulses+ul_previous_time);
+
+	/* Enable RTT interrupt */
+	NVIC_DisableIRQ(RTT_IRQn);
+	NVIC_ClearPendingIRQ(RTT_IRQn);
+	NVIC_SetPriority(RTT_IRQn, 0);
+	NVIC_EnableIRQ(RTT_IRQn);
+	rtt_enable_interrupt(RTT, RTT_MR_ALMIEN);
+}
+
 
 void io_init(void)
 {
@@ -84,7 +139,7 @@ void io_init(void)
 	BUT_PIO_ID,
 	BUT_IDX_MASK,
 	PIO_IT_RISE_EDGE,
-	but_callback);
+	but_callback());
 
 	// Ativa interrupção
 	pio_enable_interrupt(BUT_PIO, BUT_IDX_MASK);
@@ -97,16 +152,42 @@ void io_init(void)
 
 
 int main(void) {
+	int N = 0;
+	int Naux = 0;
+	double velang = 0;
+	double vel = 0;
+	double dist = 0;
 	board_init();
 	sysclk_init();	
 	configure_lcd();
+	
+	io_init();
+	
+	
 	
 	font_draw_text(&sourcecodepro_28, "OIMUNDO", 50, 50, 1);
 	font_draw_text(&calibri_36, "Oi Mundo! #$!@", 50, 100, 1);
 	font_draw_text(&arial_72, "102456", 50, 200, 2);
 	while(1) {
-		if (!pio_get(BUT_PIO, PIO_INPUT, BUT_IDX_MASK)) {
-			
+		if(buttonpress) {
+			N += 1;
+		if (f_rtt_alarme){
+			Naux = 0;
+			if (buttonpress) {
+				Naux += 1;
+			}
+			uint16_t pllPreScale = (int) (((float) 32768) / 2.0);
+			uint32_t irqRTTvalue  = 8;
+      
+			// reinicia RTT para gerar um novo IRQ
+			RTT_init(pllPreScale, irqRTTvalue);
+		  
+			int dist = (N) * 2 * 3.14 * 0.325;
+			int           
+      
+			f_rtt_alarme = false;
 		}
+	  }
+			
 	}
 }
